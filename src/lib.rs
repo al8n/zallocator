@@ -1,4 +1,5 @@
 //! Amortizes the cost of small allocations by allocating memory in bigger chunks.
+#![deny(missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
 extern crate alloc;
 
@@ -125,6 +126,7 @@ impl core::fmt::Display for Overflow {
 #[cfg(feature = "std")]
 impl std::error::Error for Overflow {}
 
+/// The stats of allocators
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ZallocatorStats {
     tags: HashMap<&'static str, u64>,
@@ -146,18 +148,21 @@ impl core::fmt::Display for ZallocatorStats {
     }
 }
 
+/// Allocate a new allocator by specific reference
 #[inline]
 pub fn allocate_from(reference: u64) -> Option<Zallocator> {
     let a = ZALLOCATORS.lock();
     a.get(&reference).map(core::clone::Clone::clone)
 }
 
+/// Release an allocator by reference
 #[inline]
 pub fn release_from(reference: u64) {
     let mut a = ZALLOCATORS.lock();
     a.remove(&reference);
 }
 
+/// Returns the stats of the allocators
 pub fn stats() -> ZallocatorStats {
     let allocators = ZALLOCATORS.lock();
     let mut tags: HashMap<&'static str, u64> = HashMap::with_capacity(allocators.len());
@@ -179,6 +184,7 @@ pub fn stats() -> ZallocatorStats {
     ZallocatorStats { tags, nums }
 }
 
+/// Release all allocators
 #[inline]
 pub fn release_all() {
     let mut a = ZALLOCATORS.lock();
@@ -280,9 +286,10 @@ impl ZallocatorBuffers {
 }
 
 impl Zallocator {
+    /// The maximum size of an allocator
     pub const MAX_ALLOC: u64 = 1 << 30;
 
-    pub const NODE_ALIGN: u64 = (core::mem::size_of::<u64>() - 1) as u64;
+    const NODE_ALIGN: u64 = (core::mem::size_of::<u64>() - 1) as u64;
 
     /// Creates an allocator starting with the given size.
     pub fn new(mut size: usize, tag: &'static str) -> Result<Self> {
@@ -467,6 +474,7 @@ impl Zallocator {
         }
     }
 
+    /// Returns how many bytes are allocated
     #[inline(always)]
     pub fn allocated(&self) -> u64 {
         self.inner.buffers.lock().allocated
@@ -573,6 +581,11 @@ impl Drop for ZallocatorBuffer {
 unsafe impl Send for ZallocatorBuffer {}
 unsafe impl Sync for ZallocatorBuffer {}
 
+/// A buffer that is allocated by the zallocator. 
+/// 
+/// # Note
+/// The buffer guarantees no read/write after deallocate happen (even though all of the allocators are freed, 
+/// it is safe to do any read or write), but does not promise no data-race when doing concurrent writing (users should take care of this). 
 #[cfg_attr(not(loom), derive(PartialEq, Eq, Hash))]
 #[derive(Debug, Clone)]
 pub struct Buffer {
@@ -600,14 +613,17 @@ impl Buffer {
         }
     }
 
-    pub fn as_ptr(&self) -> *const u8 {
+    /// Returns a raw pointer to the slice's buffer.
+    pub const fn as_ptr(&self) -> *const u8 {
         unsafe { self.ptr.add(self.start) }
     }
 
-    pub fn as_mut_ptr(&self) -> *mut u8 {
+    /// Returns an unsafe mutable pointer to the slice's buffer.
+    pub const fn as_mut_ptr(&self) -> *mut u8 {
         unsafe { self.ptr.add(self.start) }
     }
 
+    /// Returns the capacity of the buffer
     #[inline(always)]
     pub const fn capacity(&self) -> usize {
         self.end - self.start

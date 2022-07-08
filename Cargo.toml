@@ -1,6 +1,6 @@
 [package]
 name = "zallocator"
-version = "0.0.1"
+version = "0.1.0"
 edition = "2021"
 
 [workspace]
@@ -12,7 +12,7 @@ path = "benches/bench.rs"
 harness = false
 
 [features]
-default = ["full"]
+default = ["std"]
 full = ["std", "async-pool", "pool"]
 std = ["rand/std", "rand/std_rng", "lazy_static", "parking_lot", "hashbrown"]
 core = ["lazy_static/spin_no_std", "spin", "rand/alloc", "hashbrown"]
@@ -20,6 +20,8 @@ js = ["getrandom/js"]
 inline-more = ["hashbrown/inline-more"]
 async-pool = ["pollster", "futures/default", "async-channel", "async-io"]
 pool = ["crossbeam-channel"]
+
+
 
 [dependencies]
 futures = { version = "0.3", optional = true }

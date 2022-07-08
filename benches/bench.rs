@@ -3,23 +3,20 @@ use zallocator::Zallocator;
 
 fn benches_allocator(c: &mut Criterion) {
     let a = Zallocator::new(15, "test").unwrap();
-    c.bench_function("allocate", |b| {
+    c.bench_function("allocator allocate", |b| {
         b.iter_batched(
             || a.clone(),
             |a| {
-                let buf = a.allocate(1).unwrap();
-                assert_eq!(buf.len(), 1);
+                a.allocate(1).unwrap();
             },
             BatchSize::LargeInput,
         )
     });
-
-    eprintln!("{a}");
 }
 
 criterion_group! {
     benches,
-    benches_allocator
+    benches_allocator,
 }
 
 criterion_main!(benches);
