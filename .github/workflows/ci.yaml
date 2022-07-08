@@ -206,7 +206,7 @@ jobs:
 
       - uses: actions-rs/tarpaulin@v0.1
       - name: Run cargo tarpaulin
-        run: cargo tarpaulin --features all-features --run-types Tests,Doctests --out Xml
+        run: cargo tarpaulin --all-features --run-types Tests,Doctests --out Xml
 
       - name: Upload to codecov.io
         uses: codecov/codecov-action@v1.0.2
