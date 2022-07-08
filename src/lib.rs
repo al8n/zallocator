@@ -614,12 +614,12 @@ impl Buffer {
     }
 
     /// Returns a raw pointer to the slice's buffer.
-    pub fn as_ptr(&self) -> *const u8 {
+    pub const fn as_ptr(&self) -> *const u8 {
         unsafe { self.ptr.add(self.start) }
     }
 
     /// Returns an unsafe mutable pointer to the slice's buffer.
-    pub fn as_mut_ptr(&self) -> *mut u8 {
+    pub const fn as_mut_ptr(&self) -> *mut u8 {
         unsafe { self.ptr.add(self.start) }
     }
 

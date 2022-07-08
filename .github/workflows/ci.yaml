@@ -4,14 +4,28 @@ on:
   pull_request:
     branches:
       - main
+    # Don't run Clippy tests, when only textfiles were modified
+    paths-ignore:
+      - 'README'
+      - 'COPYRIGHT'
+      - 'LICENSE-*'
+      - '**.md'
+      - '**.txt'
   push:
     branches:
       - main
+    # Don't run Clippy tests, when only textfiles were modified
+    paths-ignore:
+      - 'README'
+      - 'COPYRIGHT'
+      - 'LICENSE-*'
+      - '**.md'
+      - '**.txt'
 
 env:
   RUSTFLAGS: -Dwarnings
   RUST_BACKTRACE: 1
-  nightly: nightly-2021-11-05
+  nightly: nightly-2022-06-27
 
 defaults:
   run:
@@ -160,6 +174,45 @@ jobs:
       # Run with valgrind
       - name: Run valgrind test-concurrent-allocator
         run: valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=all ./target/debug/integration 
+
+  tarpaulin:
+    name: cargo tarpaulin
+    needs: 
+      - rustfmt
+      - clippy
+      - stable
+      - nightly
+      - minrust
+      - cross
+      - sanitizer 
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install latest nightly
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v1
+
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - uses: actions-rs/tarpaulin@v0.1
+      - name: Run cargo tarpaulin
+        run: cargo tarpaulin --features all-features --run-types Tests,Doctests --out Xml
+
+      - name: Upload to codecov.io
+        uses: codecov/codecov-action@v1.0.2
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: file
 
   publish_docs:
     name: Publish Documentation
