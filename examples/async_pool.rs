@@ -15,5 +15,5 @@ async fn main() {
     tokio::time::sleep(core::time::Duration::from_millis(1000)).await;
     assert_eq!(1, pool.idle_allocators());
     tokio::time::sleep(core::time::Duration::from_millis(2000)).await;
-    assert_eq!(0, pool.idle_allocators()); 
+    assert_eq!(0, pool.idle_allocators());
 }

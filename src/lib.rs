@@ -581,11 +581,11 @@ impl Drop for ZallocatorBuffer {
 unsafe impl Send for ZallocatorBuffer {}
 unsafe impl Sync for ZallocatorBuffer {}
 
-/// A buffer that is allocated by the zallocator. 
-/// 
+/// A buffer that is allocated by the zallocator.
+///
 /// # Note
-/// The buffer guarantees no read/write after deallocate happen (even though all of the allocators are freed, 
-/// it is safe to do any read or write), but does not promise no data-race when doing concurrent writing (users should take care of this). 
+/// The buffer guarantees no read/write after deallocate happen (even though all of the allocators are freed,
+/// it is safe to do any read or write), but does not promise no data-race when doing concurrent writing (users should take care of this).
 #[cfg_attr(not(loom), derive(PartialEq, Eq, Hash))]
 #[derive(Debug, Clone)]
 pub struct Buffer {
@@ -614,12 +614,12 @@ impl Buffer {
     }
 
     /// Returns a raw pointer to the slice's buffer.
-    pub const fn as_ptr(&self) -> *const u8 {
+    pub fn as_ptr(&self) -> *const u8 {
         unsafe { self.ptr.add(self.start) }
     }
 
     /// Returns an unsafe mutable pointer to the slice's buffer.
-    pub const fn as_mut_ptr(&self) -> *mut u8 {
+    pub fn as_mut_ptr(&self) -> *mut u8 {
         unsafe { self.ptr.add(self.start) }
     }
 
