@@ -54,12 +54,14 @@ use crossbeam_channel::{bounded, select, Receiver, Sender};
 /// assert_eq!(0, pool.idle_allocators());
 /// ```
 ///
+#[derive(Debug)]
 pub struct AllocatorPool {
     num_fetches: Arc<AtomicU64>,
     inner: Inner,
     close_tx: Option<Sender<()>>,
 }
 
+#[derive(Debug)]
 struct Inner {
     alloc_tx: Sender<Allocator>,
     alloc_rx: Receiver<Allocator>,
