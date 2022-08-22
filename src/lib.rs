@@ -367,9 +367,25 @@ impl Zallocator {
         self.allocate_in(size, true)
     }
 
+    /// Allocate a buffer with according to `size` (well-aligned) without checking size
+    ///
+    /// # Panics
+    /// Size larger than `1 << 30`.
+    pub fn allocate_aligned_unchecked(&self, size: u64) -> Buffer {
+        self.allocate_in_unchecked(size, true)
+    }
+
     /// Allocate a buffer with according to `size`
     pub fn allocate(&self, size: u64) -> Result<Buffer> {
         self.allocate_in(size, false)
+    }
+
+    /// Allocate a buffer with according to `size` without checking size.
+    ///
+    /// # Panics
+    /// Size larger than `1 << 30`.
+    pub fn allocate_unchecked(&self, size: u64) -> Buffer {
+        self.allocate_in_unchecked(size, false)
     }
 
     /// Allocate a buffer with the same length of `buf`, and copy the contents of buf to the [`Buffer`][buffer].
@@ -419,6 +435,28 @@ impl Zallocator {
             size += Self::NODE_ALIGN;
         }
 
+        Ok(self.allocate_in_helper(size, aligned))
+    }
+
+    #[inline(always)]
+    fn allocate_in_unchecked(&self, mut size: u64, aligned: bool) -> Buffer {
+        if size > Self::MAX_ALLOC {
+            panic!("zallocator: {}", Overflow(size));
+        }
+
+        if size == 0 {
+            return Buffer::null();
+        }
+
+        if aligned {
+            size += Self::NODE_ALIGN;
+        }
+
+        self.allocate_in_helper(size, aligned)
+    }
+
+    #[inline(always)]
+    fn allocate_in_helper(&self, size: u64, aligned: bool) -> Buffer {
         loop {
             let pos =
                 Position::parse(self.inner.composite_idx.fetch_add(size, Ordering::SeqCst) + size);
@@ -453,23 +491,23 @@ impl Zallocator {
 
                 let start = (aligned - (ptr as u64)) + offset as u64;
                 buf.set_len(buf_cap - start as usize);
-                return Ok(Buffer {
+                return Buffer {
                     ptr: buf_ptr,
                     cap: buf_cap,
                     start: start as usize,
                     end: (start + size) as usize,
                     refs: buf.refs(),
-                });
+                };
             } else {
                 let start = pos.pos - (size as usize);
                 buf.set_len(buf_cap - size as usize);
-                return Ok(Buffer {
+                return Buffer {
                     ptr: buf_ptr,
                     cap: buf_cap,
                     start,
                     end: pos.pos,
                     refs: buf.refs(),
-                });
+                };
             }
         }
     }

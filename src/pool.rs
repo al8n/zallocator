@@ -64,10 +64,28 @@ impl Allocator {
         self.z.allocate_aligned(size)
     }
 
+    /// Allocate a buffer with according to `size` (well-aligned) without checking size
+    ///
+    /// # Panics
+    /// Size larger than `1 << 30`.
+    #[inline]
+    pub fn allocate_aligned_unchecked(&self, size: u64) -> Buffer {
+        self.z.allocate_aligned_unchecked(size)
+    }
+
     /// Allocate a buffer with according to `size`
     #[inline]
     pub fn allocate(&self, size: u64) -> Result<Buffer> {
         self.z.allocate(size)
+    }
+
+    /// Allocate a buffer with according to `size` without checking size.
+    ///
+    /// # Panics
+    /// Size larger than `1 << 30`.
+    #[inline]
+    pub fn allocate_unchecked(&self, size: u64) -> Buffer {
+        self.z.allocate_unchecked(size)
     }
 
     /// Allocate a buffer with the same length of `buf`, and copy the contents of buf to the [`Buffer`][buffer].
