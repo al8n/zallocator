@@ -681,6 +681,64 @@ impl Buffer {
             core::ptr::copy_nonoverlapping(&src[0], self.as_mut_ptr(), src.len());
         }
     }
+
+    /// Returns a new buffer of self for the provided range.
+    ///
+    /// # Panics
+    ///
+    /// Requires that `begin <= end` and `end <= self.capacity()`, otherwise slicing
+    /// will panic.
+    #[inline(always)]
+    pub fn slice(&self, range: impl core::ops::RangeBounds<usize>) -> Self {
+        let start = match range.start_bound() {
+            core::ops::Bound::Included(start) => *start,
+            core::ops::Bound::Excluded(start) => start.checked_add(1).expect("out of range"),
+            core::ops::Bound::Unbounded => 0,
+        };
+
+        assert!(
+            self.start.checked_add(start).expect("out of range") <= self.end,
+            "out of range"
+        );
+
+        let end = match range.end_bound() {
+            core::ops::Bound::Included(end) => end.checked_add(1).expect("out of range"),
+            core::ops::Bound::Excluded(end) => *end,
+            core::ops::Bound::Unbounded => self.end,
+        };
+
+        assert!(
+            start <= end,
+            "range start must not be greater than end: {:?} <= {:?}",
+            start,
+            end,
+        );
+
+        let len = self.capacity();
+        assert!(
+            end <= len,
+            "range end out of bounds: {:?} <= {:?}",
+            end,
+            len,
+        );
+
+        if end == start {
+            return Buffer::null();
+        }
+
+        assert!(
+            (self.start + start).checked_add(end).expect("out of range") <= self.end,
+            "out of range"
+        );
+
+        Self {
+            ptr: self.ptr,
+            cap: self.cap,
+            start: self.start + start,
+            end: self.start + start + end,
+            refs: self.refs.clone(),
+        }
+    }
 }
 
 impl core::ops::Deref for Buffer {
