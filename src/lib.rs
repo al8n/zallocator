@@ -393,7 +393,7 @@ impl Zallocator {
     /// [buffer]: struct.Buffer.html
     pub fn copy_from(&self, buf: impl AsRef<[u8]>) -> Result<Buffer> {
         let b = buf.as_ref();
-        self.allocate(b.len() as u64).map(|mut o| {
+        self.allocate(b.len() as u64).map(|o| {
             o.copy_from_slice(b);
             o
         })
@@ -666,6 +666,21 @@ impl Buffer {
     pub const fn capacity(&self) -> usize {
         self.end - self.start
     }
+
+    /// Copy src to self
+    ///
+    /// # Panics
+    /// Panics if the length of src is greater than the capacity of buffer.
+    #[inline(always)]
+    pub const fn copy_from_slice(&self, src: &[u8]) {
+        if self.capacity() < src.len() {
+            panic!("Buffer capacity is not enough");
+        }
+
+        unsafe {
+            core::ptr::copy_nonoverlapping(&src[0], self.as_mut_ptr(), src.len());
+        }
+    }
 }
 
 impl core::ops::Deref for Buffer {
@@ -910,5 +925,21 @@ mod tests {
         }
 
         release_all();
+    }
+
+    #[test]
+    fn test_copy_from_slice() {
+        let a = Zallocator::new(1024, "test copy_from_slice").unwrap();
+        let b1 = a.allocate_unchecked(100);
+        b1.copy_from_slice(&[1; 80]);
+        let b2 = a.allocate_unchecked(100);
+        b2.copy_from_slice(&b1);
+        for i in 0..80 {
+            assert_eq!(b2[i], 1);
+        }
+
+        for i in 80..100 {
+            assert_eq!(b2[i], 0);
+        }
     }
 }
