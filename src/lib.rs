@@ -1,6 +1,10 @@
 //! Amortizes the cost of small allocations by allocating memory in bigger chunks.
 #![deny(missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(
+    feature = "nightly",
+    feature(const_mut_refs, const_slice_from_raw_parts_mut)
+)]
 extern crate alloc;
 
 use alloc::{vec, vec::Vec};
@@ -682,6 +686,28 @@ impl Buffer {
         }
     }
 
+    /// Returns the undelying mutable slice of the buffer
+    #[inline(always)]
+    #[allow(clippy::mut_from_ref)]
+    #[cfg(not(feature = "nightly"))]
+    pub fn as_mut_slice(&self) -> &mut [u8] {
+        unsafe { from_raw_parts_mut(self.ptr.add(self.start), self.capacity()) }
+    }
+
+    /// Returns the undelying mutable slice of the buffer
+    #[inline(always)]
+    #[allow(clippy::mut_from_ref)]
+    #[cfg(feature = "nightly")]
+    pub const fn as_mut_slice(&self) -> &mut [u8] {
+        unsafe { from_raw_parts_mut(self.ptr.add(self.start), self.capacity()) }
+    }
+
+    /// Returns the undelying immutable slice of the buffer
+    #[inline(always)]
+    pub const fn as_slice(&self) -> &[u8] {
+        unsafe { from_raw_parts(self.ptr.add(self.start), self.capacity()) }
+    }
+
     /// Returns a new buffer of self for the provided range.
     ///
     /// # Panics
@@ -756,6 +782,18 @@ impl core::ops::DerefMut for Buffer {
         // Safety: the underlying will not be dropped and
         // the ptr will be not possible owned in another Buffer
         unsafe { from_raw_parts_mut(self.ptr.add(self.start), self.capacity()) }
+    }
+}
+
+impl AsRef<[u8]> for Buffer {
+    fn as_ref(&self) -> &[u8] {
+        self
+    }
+}
+
+impl AsMut<[u8]> for Buffer {
+    fn as_mut(&mut self) -> &mut [u8] {
+        self
     }
 }
 

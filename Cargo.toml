@@ -1,6 +1,6 @@
 [package]
 name = "zallocator"
-version = "0.1.4"
+version = "0.1.5"
 authors = ["Al Liu <scygliu1@gmail.com>"]
 edition = "2021"
 license = "MIT/Apache-2.0"
@@ -27,6 +27,7 @@ js = ["getrandom/js"]
 inline-more = ["hashbrown/inline-more"]
 async-pool = ["pollster", "futures/default", "async-channel", "async-io"]
 pool = ["crossbeam-channel"]
+nightly = []
 
 
 
