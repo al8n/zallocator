@@ -101,4 +101,9 @@ impl Allocator {
     pub fn truncate(&self, max: u64) {
         self.z.truncate(max)
     }
+
+    #[inline]
+    pub(crate) fn can_put_back(&self) -> bool {
+        self.z.can_put_back()
+    }
 }

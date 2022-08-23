@@ -162,7 +162,7 @@ impl AsyncAllocatorPool {
         self.num_fetches.fetch_add(1, Ordering::Relaxed);
         futures::select! {
             msg = self.inner.alloc_rx.recv().fuse() => {
-                msg.map(|mut a| {
+                msg.map(|a| {
                     a.reset();
                     a.set_tag(tag);
                     a
@@ -186,7 +186,7 @@ impl AsyncAllocatorPool {
     /// # });
     /// ```
     pub async fn put(&self, alloc: Allocator) {
-        if !self.inner.alloc_tx.is_full() {
+        if !self.inner.alloc_tx.is_full() && alloc.can_put_back() {
             if let Err(e) = self.inner.alloc_tx.send(alloc).await {
                 e.into_inner().release();
             }

@@ -140,7 +140,7 @@ impl AllocatorPool {
     pub fn fetch(&self, size: usize, tag: &'static str) -> super::Result<Allocator> {
         self.num_fetches.fetch_add(1, Ordering::Relaxed);
         select! {
-            recv(self.inner.alloc_rx) -> msg => msg.map(|mut a| {
+            recv(self.inner.alloc_rx) -> msg => msg.map(|a| {
                 a.reset();
                 a.set_tag(tag);
                 a
@@ -161,7 +161,7 @@ impl AllocatorPool {
     /// pool.put(a);
     /// ```
     pub fn put(&self, alloc: Allocator) {
-        if !self.inner.alloc_tx.is_full() {
+        if !self.inner.alloc_tx.is_full() && alloc.can_put_back() {
             if let Err(e) = self.inner.alloc_tx.send(alloc) {
                 e.into_inner().release();
             }

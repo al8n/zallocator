@@ -59,8 +59,8 @@ mod sealed {
 
     #[cfg(not(all(test, loom)))]
     pub(crate) mod sync {
-        pub(crate) use alloc::sync::Arc;
         pub(crate) use core::sync::*;
+        pub(crate) use triomphe::Arc;
     }
 
     #[cfg(all(test, loom))]
@@ -364,7 +364,7 @@ impl Zallocator {
     /// Release would release the allocator.
     #[inline]
     pub fn release(self) {
-        if Arc::strong_count(&self.inner) == 1 {
+        if Arc::count(&self.inner) == 1 {
             ZALLOCATORS.lock().remove(&self.reference);
         }
     }
@@ -427,6 +427,11 @@ impl Zallocator {
             *b = ZallocatorBuffer::null();
         }
         inner.allocated = new_allocated;
+    }
+
+    /// Returns if the can be put back into the pool
+    pub(crate) fn can_put_back(&self) -> bool {
+        Arc::count(&self.inner) == 1
     }
 
     #[inline(always)]
@@ -615,7 +620,7 @@ impl ZallocatorBuffer {
 
 impl Drop for ZallocatorBuffer {
     fn drop(&mut self) {
-        if Arc::strong_count(&self.refs) == 1 {
+        if Arc::count(&self.refs) == 1 {
             let cap = self.capacity();
             unsafe {
                 let _ = Vec::from_raw_parts(self.as_mut_ptr(), cap, cap);
@@ -855,7 +860,7 @@ impl Drop for Buffer {
             return;
         }
 
-        if Arc::strong_count(&self.refs) == 1 {
+        if Arc::count(&self.refs) == 1 {
             unsafe {
                 let _ = Vec::from_raw_parts(self.ptr, self.cap, self.cap);
             }
