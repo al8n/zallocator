@@ -11,7 +11,7 @@ pub use r#async::*;
 use super::{Buffer, Result};
 
 /// Amortizes the cost of small allocations by allocating memory in bigger chunks.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[repr(transparent)]
 pub struct Allocator {
     z: crate::Zallocator,
@@ -36,7 +36,7 @@ impl Allocator {
 
     /// Set the tag for this allocator
     #[inline(always)]
-    pub fn set_tag(&mut self, tag: &'static str) {
+    pub fn set_tag(&self, tag: &'static str) {
         self.z.set_tag(tag)
     }
 

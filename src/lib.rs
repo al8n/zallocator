@@ -172,15 +172,16 @@ pub fn stats() -> ZallocatorStats {
     let mut tags: HashMap<&'static str, u64> = HashMap::with_capacity(allocators.len());
     let mut nums: HashMap<&'static str, u64> = HashMap::with_capacity(allocators.len());
     for (_, a) in allocators.iter() {
-        match tags.get_mut(a.tag) {
+        let tag = a.get_tag();
+        match tags.get_mut(tag) {
             Some(v) => {
                 *v += a.allocated();
-                let num = nums.get_mut(a.tag).unwrap();
+                let num = nums.get_mut(tag).unwrap();
                 *num += 1;
             }
             None => {
-                tags.insert(a.tag, a.allocated());
-                nums.insert(a.tag, 1);
+                tags.insert(tag, a.allocated());
+                nums.insert(tag, 1);
             }
         }
     }
@@ -199,23 +200,24 @@ pub fn release_all() {
 #[derive(Clone)]
 #[cfg_attr(not(loom), derive(Debug))]
 pub struct Zallocator {
-    tag: &'static str,
     inner: Arc<ZallocatorInner>,
     reference: u64,
 }
 
 #[cfg_attr(not(loom), derive(Debug))]
 struct ZallocatorInner {
+    tag: crossbeam_utils::atomic::AtomicCell<&'static str>,
     composite_idx: AtomicU64, // Stores bufIdx in 32 MSBs and posIdx in 32 LSBs.
     buffers: Mutex<ZallocatorBuffers>,
 }
 
 impl ZallocatorInner {
     #[inline(always)]
-    fn new(composite_idx: u64, buffers: ZallocatorBuffers) -> Arc<Self> {
+    fn new(tag: &'static str, composite_idx: u64, buffers: ZallocatorBuffers) -> Arc<Self> {
         Arc::new(Self {
             composite_idx: AtomicU64::new(composite_idx),
             buffers: Mutex::new(buffers),
+            tag: crossbeam_utils::atomic::AtomicCell::new(tag),
         })
     }
 }
@@ -310,8 +312,7 @@ impl Zallocator {
         }
 
         let this = Self {
-            tag,
-            inner: ZallocatorInner::new(0, ZallocatorBuffers::new(l2)),
+            inner: ZallocatorInner::new(tag, 0, ZallocatorBuffers::new(l2)),
             reference,
         };
 
@@ -329,13 +330,13 @@ impl Zallocator {
     /// Get the tag of the allocator
     #[inline(always)]
     pub fn get_tag(&self) -> &'static str {
-        self.tag
+        self.inner.tag.load()
     }
 
     /// Set the tag for this allocator
     #[inline(always)]
-    pub fn set_tag(&mut self, tag: &'static str) {
-        self.tag = tag;
+    pub fn set_tag(&self, tag: &'static str) {
+        self.inner.tag.store(tag);
     }
 
     /// Reset the allocator
@@ -363,7 +364,9 @@ impl Zallocator {
     /// Release would release the allocator.
     #[inline]
     pub fn release(self) {
-        ZALLOCATORS.lock().remove(&self.reference);
+        if Arc::strong_count(&self.inner) == 1 {
+            ZALLOCATORS.lock().remove(&self.reference);
+        }
     }
 
     /// Allocate a buffer with according to `size` (well-aligned)
@@ -404,6 +407,7 @@ impl Zallocator {
     }
 
     /// Truncate the allocator to new size.
+    #[inline]
     pub fn truncate(&self, max: u64) {
         let mut inner = self.inner.buffers.lock();
         let mut alloc = 0u64;
@@ -714,8 +718,25 @@ impl Buffer {
     ///
     /// Requires that `begin <= end` and `end <= self.capacity()`, otherwise slicing
     /// will panic.
-    #[inline(always)]
+    #[inline]
     pub fn slice(&self, range: impl core::ops::RangeBounds<usize>) -> Self {
+        let (start, end) = self.slice_in(range);
+
+        if end == start {
+            return Buffer::null();
+        }
+
+        Self {
+            ptr: self.ptr,
+            cap: self.cap,
+            start: self.start + start,
+            end: self.start + start + end,
+            refs: self.refs.clone(),
+        }
+    }
+
+    #[inline(always)]
+    fn slice_in(&self, range: impl core::ops::RangeBounds<usize>) -> (usize, usize) {
         let start = match range.start_bound() {
             core::ops::Bound::Included(start) => *start,
             core::ops::Bound::Excluded(start) => start.checked_add(1).expect("out of range"),
@@ -748,22 +769,17 @@ impl Buffer {
             len,
         );
 
-        if end == start {
-            return Buffer::null();
-        }
-
         assert!(
             (self.start + start).checked_add(end).expect("out of range") <= self.end,
             "out of range"
         );
+        (start, end)
+    }
+}
 
-        Self {
-            ptr: self.ptr,
-            cap: self.cap,
-            start: self.start + start,
-            end: self.start + start + end,
-            refs: self.refs.clone(),
-        }
+impl Default for Buffer {
+    fn default() -> Self {
+        Self::null()
     }
 }
 
