@@ -1,11 +1,7 @@
-#[cfg(feature = "pool")]
 mod sync;
-#[cfg(feature = "pool")]
 pub use sync::*;
 
-#[cfg(feature = "async-pool")]
 mod r#async;
-#[cfg(feature = "async-pool")]
 pub use r#async::*;
 
 use super::{Buffer, Result};

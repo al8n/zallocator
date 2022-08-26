@@ -28,8 +28,8 @@ mod util;
 use util::iec_bytes;
 
 /// Lock-free allocator pool
-#[cfg(any(feature = "pool", feature = "async-pool"))]
 pub mod pool;
+
 #[cfg(not(all(test, loom)))]
 mod mutex {
     #[cfg(feature = "parking_lot")]

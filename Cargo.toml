@@ -1,6 +1,6 @@
 [package]
 name = "zallocator"
-version = "0.1.7"
+version = "0.2.2"
 authors = ["Al Liu <scygliu1@gmail.com>"]
 edition = "2021"
 license = "MIT/Apache-2.0"
@@ -25,11 +25,9 @@ std = ["rand/std", "rand/std_rng", "lazy_static", "parking_lot", "hashbrown", "c
 core = ["lazy_static/spin_no_std", "spin", "rand/alloc", "hashbrown"]
 js = ["getrandom/js"]
 inline-more = ["hashbrown/inline-more"]
-async-pool = ["pollster", "futures/default", "async-channel", "async-io"]
-pool = ["crossbeam-channel"]
+async-pool = ["std", "pollster", "futures/default", "async-channel", "async-io"]
+pool = ["std", "crossbeam-channel"]
 nightly = ["crossbeam-utils/nightly"]
-
-
 
 [dependencies]
 crossbeam-channel = { version = "0.5", optional = true }
@@ -42,7 +40,7 @@ parking_lot = { version = "0.12", optional = true }
 rand = { version = "0.8", optional = true, default-features = false }
 getrandom = { version = "0.2", optional = true }
 spin = { version = "0.9", optional = true }
-triomphe = { version = "0.1.7", default-features = false }
+triomphe = { version = "0.1", default-features = false }
 async-channel = { version = "1.7", optional = true }
 async-io = { version = "1.8", optional = true }
 
@@ -60,4 +58,5 @@ loom = "0.5"
 getrandom = { version = "0.2", features = ["js"] }
 
 [package.metadata.docs.rs]
+all-features = true
 rustdoc-args = ["--cfg", "docsrs"]

@@ -1,9 +1,12 @@
 use super::Allocator;
+#[cfg(feature = "crossbeam-channel")]
 use crate::sealed::sync::{
     atomic::{AtomicU64, Ordering},
     Arc,
 };
+#[cfg(feature = "crossbeam-channel")]
 use core::time::Duration;
+#[cfg(feature = "crossbeam-channel")]
 use crossbeam_channel::{bounded, select, Receiver, Sender};
 
 /// # Introduction
@@ -54,6 +57,7 @@ use crossbeam_channel::{bounded, select, Receiver, Sender};
 /// assert_eq!(0, pool.idle_allocators());
 /// ```
 ///
+#[cfg(feature = "crossbeam-channel")]
 #[derive(Debug)]
 pub struct AllocatorPool {
     num_fetches: Arc<AtomicU64>,
@@ -61,12 +65,26 @@ pub struct AllocatorPool {
     close_tx: Option<Sender<()>>,
 }
 
+/// Lock-free allocator pool.
+#[cfg(not(feature = "crossbeam-channel"))]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct AllocatorPool;
+
+#[cfg(not(feature = "crossbeam-channel"))]
+impl Default for AllocatorPool {
+    fn default() -> Self {
+        Self
+    }
+}
+
+#[cfg(feature = "crossbeam-channel")]
 #[derive(Debug)]
 struct Inner {
     alloc_tx: Sender<Allocator>,
     alloc_rx: Receiver<Allocator>,
 }
 
+#[cfg(feature = "crossbeam-channel")]
 impl Inner {
     #[inline]
     fn new(cap: usize) -> Self {
@@ -87,6 +105,7 @@ impl AllocatorPool {
     /// let a = pool.fetch(1024, "test").unwrap();
     /// pool.put(a);
     /// ```
+    #[cfg(feature = "crossbeam-channel")]
     #[inline]
     pub fn new(cap: usize) -> Self {
         Self {
@@ -94,6 +113,23 @@ impl AllocatorPool {
             inner: Inner::new(cap),
             close_tx: None,
         }
+    }
+
+    /// Creates a new pool without auto free idle allocators
+    ///
+    /// # Example
+    /// ```
+    /// use zallocator::pool::AllocatorPool;
+    /// use std::time::Duration;
+    ///
+    /// let pool = AllocatorPool::new();
+    /// let a = pool.fetch(1024, "test").unwrap();
+    /// pool.put(a);
+    /// ```
+    #[cfg(not(feature = "crossbeam-channel"))]
+    #[inline]
+    pub const fn new() -> Self {
+        Self
     }
 
     /// Creates a new pool with a thread will auto free idle allocators
@@ -107,6 +143,7 @@ impl AllocatorPool {
     /// let a = pool.fetch(1024, "test").unwrap();
     /// pool.put(a);
     /// ```
+    #[cfg(feature = "crossbeam-channel")]
     pub fn with_free(cap: usize, idle_timeout: Duration) -> Self {
         let inner = Inner::new(cap);
         let num_fetches = Arc::new(AtomicU64::new(0));
@@ -138,14 +175,22 @@ impl AllocatorPool {
     /// let a = pool.fetch(1024, "test").unwrap();
     /// ```
     pub fn fetch(&self, size: usize, tag: &'static str) -> super::Result<Allocator> {
-        self.num_fetches.fetch_add(1, Ordering::Relaxed);
-        select! {
-            recv(self.inner.alloc_rx) -> msg => msg.map(|a| {
-                a.reset();
-                a.set_tag(tag);
-                a
-            }).or_else(|_| Allocator::new(size, tag)),
-            default => Allocator::new(size, tag),
+        #[cfg(feature = "crossbeam-channel")]
+        {
+            self.num_fetches.fetch_add(1, Ordering::Relaxed);
+            select! {
+                recv(self.inner.alloc_rx) -> msg => msg.map(|a| {
+                    a.reset();
+                    a.set_tag(tag);
+                    a
+                }).or_else(|_| Allocator::new(size, tag)),
+                default => Allocator::new(size, tag),
+            }
+        }
+
+        #[cfg(not(feature = "crossbeam-channel"))]
+        {
+            Allocator::new(size, tag)
         }
     }
 
@@ -161,9 +206,19 @@ impl AllocatorPool {
     /// pool.put(a);
     /// ```
     pub fn put(&self, alloc: Allocator) {
-        if !self.inner.alloc_tx.is_full() && alloc.can_put_back() {
-            if let Err(e) = self.inner.alloc_tx.send(alloc) {
-                e.into_inner().release();
+        #[cfg(feature = "crossbeam-channel")]
+        {
+            if !self.inner.alloc_tx.is_full() && alloc.can_put_back() {
+                if let Err(e) = self.inner.alloc_tx.send(alloc) {
+                    e.into_inner().release();
+                }
+            }
+        }
+
+        #[cfg(not(feature = "crossbeam-channel"))]
+        {
+            if alloc.can_put_back() {
+                alloc.release();
             }
         }
     }
@@ -181,12 +236,14 @@ impl AllocatorPool {
     ///
     /// assert_eq!(pool.idle_allocators(), 1);
     /// ```
+    #[cfg(feature = "crossbeam-channel")]
     #[inline]
     pub fn idle_allocators(&self) -> usize {
         self.inner.alloc_rx.len()
     }
 }
 
+#[cfg(feature = "crossbeam-channel")]
 impl Drop for AllocatorPool {
     fn drop(&mut self) {
         if let Some(close_tx) = &self.close_tx {
@@ -195,6 +252,7 @@ impl Drop for AllocatorPool {
     }
 }
 
+#[cfg(feature = "crossbeam-channel")]
 struct FreeupProcessor {
     rx: Receiver<Allocator>,
     close_rx: Receiver<()>,
@@ -202,8 +260,9 @@ struct FreeupProcessor {
     num_fetches: Arc<AtomicU64>,
 }
 
+#[cfg(feature = "crossbeam-channel")]
 impl FreeupProcessor {
-    fn new(
+    const fn new(
         rx: Receiver<Allocator>,
         close_rx: Receiver<()>,
         ticker: Duration,
@@ -262,9 +321,11 @@ mod test {
         pool.put(a);
         pool.put(b);
         pool.put(c);
+        #[cfg(feature = "crossbeam-channel")]
         assert_eq!(2, pool.idle_allocators());
     }
 
+    #[cfg(feature = "crossbeam-channel")]
     #[test]
     fn test_allocator_pool_with_free() {
         let pool = AllocatorPool::with_free(2, core::time::Duration::from_millis(1000));
