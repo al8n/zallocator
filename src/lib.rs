@@ -361,7 +361,7 @@ impl Zallocator {
     /// Release would release the allocator.
     #[inline]
     pub fn release(self) {
-        if Arc::count(&self.inner) == 1 {
+        if Arc::count(&self.inner) == 2 {
             ZALLOCATORS.lock().remove(&self.reference);
         }
     }
@@ -428,7 +428,7 @@ impl Zallocator {
 
     /// Returns if the can be put back into the pool
     pub(crate) fn can_put_back(&self) -> bool {
-        Arc::count(&self.inner) == 1
+        Arc::count(&self.inner) == 2
     }
 
     #[inline(always)]

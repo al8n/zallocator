@@ -1,39 +1,14 @@
 use super::Allocator;
-#[cfg(all(
-    feature = "async-channel",
-    feature = "pollster",
-    feature = "futures",
-    feature = "async-io"
-))]
 use crate::sealed::sync::{
     atomic::{AtomicU64, Ordering},
     Arc,
 };
-#[cfg(all(
-    feature = "async-channel",
-    feature = "pollster",
-    feature = "futures",
-    feature = "async-io"
-))]
 use async_channel::{bounded, Receiver, Sender};
-#[cfg(feature = "crossbeam-channel")]
 use core::time::Duration;
-#[cfg(all(
-    feature = "async-channel",
-    feature = "pollster",
-    feature = "futures",
-    feature = "async-io"
-))]
 use futures::{
     future::{BoxFuture, FutureExt},
     stream::StreamExt,
 };
-#[cfg(all(
-    feature = "async-channel",
-    feature = "pollster",
-    feature = "futures",
-    feature = "async-io"
-))]
 use pollster::FutureExt as _;
 
 /// # Introduction
@@ -89,58 +64,18 @@ use pollster::FutureExt as _;
 /// ```
 ///
 #[derive(Debug)]
-#[cfg(all(
-    feature = "async-channel",
-    feature = "pollster",
-    feature = "futures",
-    feature = "async-io"
-))]
 pub struct AsyncAllocatorPool {
     num_fetches: Arc<AtomicU64>,
     inner: Inner,
     close_tx: Option<Sender<()>>,
 }
 
-/// Lock-free and runtime agnostic async allocator pool.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[cfg(not(all(
-    feature = "async-channel",
-    feature = "pollster",
-    feature = "futures",
-    feature = "async-io"
-)))]
-pub struct AsyncAllocatorPool;
-
-#[cfg(not(all(
-    feature = "async-channel",
-    feature = "pollster",
-    feature = "futures",
-    feature = "async-io"
-)))]
-impl Default for AsyncAllocatorPool {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[derive(Debug)]
-#[cfg(all(
-    feature = "async-channel",
-    feature = "pollster",
-    feature = "futures",
-    feature = "async-io"
-))]
 struct Inner {
     alloc_tx: Sender<Allocator>,
     alloc_rx: Receiver<Allocator>,
 }
 
-#[cfg(all(
-    feature = "async-channel",
-    feature = "pollster",
-    feature = "futures",
-    feature = "async-io"
-))]
 impl Inner {
     #[inline]
     fn new(cap: usize) -> Self {
@@ -178,30 +113,6 @@ impl AsyncAllocatorPool {
         }
     }
 
-    /// Creates a new pool without auto free idle allocators
-    ///
-    /// # Example
-    /// ```
-    /// use zallocator::pool::AsyncAllocatorPool;
-    /// use std::time::Duration;
-    ///
-    /// # tokio_test::block_on(async {
-    /// let pool = AsyncAllocatorPool::new();
-    /// let a = pool.fetch(1024, "test").await.unwrap();
-    /// pool.put(a).await;
-    /// # });
-    /// ```
-    #[cfg(not(all(
-        feature = "async-channel",
-        feature = "pollster",
-        feature = "futures",
-        feature = "async-io"
-    )))]
-    #[inline]
-    pub const fn new() -> Self {
-        Self
-    }
-
     /// Creates a new pool with a thread will auto free idle allocators
     ///
     /// # Example
@@ -215,12 +126,6 @@ impl AsyncAllocatorPool {
     /// pool.put(a).await;
     /// # });
     /// ```
-    #[cfg(all(
-        feature = "async-channel",
-        feature = "pollster",
-        feature = "futures",
-        feature = "async-io"
-    ))]
     #[inline]
     pub fn with_free<S, R>(cap: usize, idle_timeout: Duration, spawner: S) -> Self
     where
@@ -260,33 +165,16 @@ impl AsyncAllocatorPool {
     /// # });
     /// ```
     pub async fn fetch(&self, size: usize, tag: &'static str) -> super::Result<Allocator> {
-        #[cfg(all(
-            feature = "async-channel",
-            feature = "pollster",
-            feature = "futures",
-            feature = "async-io"
-        ))]
-        {
-            self.num_fetches.fetch_add(1, Ordering::Relaxed);
-            futures::select! {
-                msg = self.inner.alloc_rx.recv().fuse() => {
-                    msg.map(|a| {
-                        a.reset();
-                        a.set_tag(tag);
-                        a
-                    }).or_else(|_| Allocator::new(size, tag))
-                },
-                default => Allocator::new(size, tag),
-            }
-        }
-        #[cfg(not(all(
-            feature = "async-channel",
-            feature = "pollster",
-            feature = "futures",
-            feature = "async-io"
-        )))]
-        {
-            Allocator::new(size, tag)
+        self.num_fetches.fetch_add(1, Ordering::Relaxed);
+        futures::select! {
+            msg = self.inner.alloc_rx.recv().fuse() => {
+                msg.map(|a| {
+                    a.reset();
+                    a.set_tag(tag);
+                    a
+                }).or_else(|_| Allocator::new(size, tag))
+            },
+            default => Allocator::new(size, tag),
         }
     }
 
@@ -304,29 +192,9 @@ impl AsyncAllocatorPool {
     /// # });
     /// ```
     pub async fn put(&self, alloc: Allocator) {
-        #[cfg(all(
-            feature = "async-channel",
-            feature = "pollster",
-            feature = "futures",
-            feature = "async-io"
-        ))]
-        {
-            if !self.inner.alloc_tx.is_full() && alloc.can_put_back() {
-                if let Err(e) = self.inner.alloc_tx.send(alloc).await {
-                    e.into_inner().release();
-                }
-            }
-        }
-
-        #[cfg(not(all(
-            feature = "async-channel",
-            feature = "pollster",
-            feature = "futures",
-            feature = "async-io"
-        )))]
-        {
-            if alloc.can_put_back() {
-                alloc.release();
+        if !self.inner.alloc_tx.is_full() && alloc.can_put_back() {
+            if let Err(e) = self.inner.alloc_tx.send(alloc).await {
+                e.into_inner().release();
             }
         }
     }
@@ -346,24 +214,12 @@ impl AsyncAllocatorPool {
     /// assert_eq!(pool.idle_allocators(), 1);
     /// # });
     /// ```
-    #[cfg(all(
-        feature = "async-channel",
-        feature = "pollster",
-        feature = "futures",
-        feature = "async-io"
-    ))]
     #[inline]
     pub fn idle_allocators(&self) -> usize {
         self.inner.alloc_rx.len()
     }
 }
 
-#[cfg(all(
-    feature = "async-channel",
-    feature = "pollster",
-    feature = "futures",
-    feature = "async-io"
-))]
 impl Drop for AsyncAllocatorPool {
     fn drop(&mut self) {
         if self.close_tx.is_some() {
@@ -374,12 +230,6 @@ impl Drop for AsyncAllocatorPool {
     }
 }
 
-#[cfg(all(
-    feature = "async-channel",
-    feature = "pollster",
-    feature = "futures",
-    feature = "async-io"
-))]
 struct FreeupProcessor {
     rx: Receiver<Allocator>,
     close_rx: Receiver<()>,
@@ -387,12 +237,6 @@ struct FreeupProcessor {
     num_fetches: Arc<AtomicU64>,
 }
 
-#[cfg(all(
-    feature = "async-channel",
-    feature = "pollster",
-    feature = "futures",
-    feature = "async-io"
-))]
 impl FreeupProcessor {
     fn new(
         rx: Receiver<Allocator>,
@@ -460,12 +304,6 @@ mod test {
         assert_eq!(2, pool.idle_allocators());
     }
 
-    #[cfg(all(
-        feature = "async-channel",
-        feature = "pollster",
-        feature = "futures",
-        feature = "async-io"
-    ))]
     #[tokio::test]
     async fn test_allocator_pool_with_free() {
         let pool =

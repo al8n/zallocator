@@ -1,7 +1,19 @@
 mod sync;
 pub use sync::*;
 
+#[cfg(all(
+    feature = "async-channel",
+    feature = "pollster",
+    feature = "futures",
+    feature = "async-io"
+))]
 mod r#async;
+#[cfg(all(
+    feature = "async-channel",
+    feature = "pollster",
+    feature = "futures",
+    feature = "async-io"
+))]
 pub use r#async::*;
 
 use super::{Buffer, Result};

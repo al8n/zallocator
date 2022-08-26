@@ -9,6 +9,9 @@ use core::time::Duration;
 #[cfg(feature = "crossbeam-channel")]
 use crossbeam_channel::{bounded, select, Receiver, Sender};
 
+#[cfg(not(feature = "crossbeam-channel"))]
+use crossbeam_queue::ArrayQueue;
+
 /// # Introduction
 /// Lock-free allocator pool.
 ///
@@ -67,14 +70,10 @@ pub struct AllocatorPool {
 
 /// Lock-free allocator pool.
 #[cfg(not(feature = "crossbeam-channel"))]
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct AllocatorPool;
-
-#[cfg(not(feature = "crossbeam-channel"))]
-impl Default for AllocatorPool {
-    fn default() -> Self {
-        Self
-    }
+#[derive(Debug)]
+#[repr(transparent)]
+pub struct AllocatorPool {
+    queue: ArrayQueue<Allocator>,
 }
 
 #[cfg(feature = "crossbeam-channel")]
@@ -99,7 +98,6 @@ impl AllocatorPool {
     /// # Example
     /// ```
     /// use zallocator::pool::AllocatorPool;
-    /// use std::time::Duration;
     ///
     /// let pool = AllocatorPool::new(2);
     /// let a = pool.fetch(1024, "test").unwrap();
@@ -120,16 +118,17 @@ impl AllocatorPool {
     /// # Example
     /// ```
     /// use zallocator::pool::AllocatorPool;
-    /// use std::time::Duration;
     ///
-    /// let pool = AllocatorPool::new();
+    /// let pool = AllocatorPool::new(2);
     /// let a = pool.fetch(1024, "test").unwrap();
     /// pool.put(a);
     /// ```
     #[cfg(not(feature = "crossbeam-channel"))]
     #[inline]
-    pub const fn new() -> Self {
-        Self
+    pub fn new(cap: usize) -> Self {
+        Self {
+            queue: ArrayQueue::new(cap),
+        }
     }
 
     /// Creates a new pool with a thread will auto free idle allocators
@@ -190,7 +189,12 @@ impl AllocatorPool {
 
         #[cfg(not(feature = "crossbeam-channel"))]
         {
-            Allocator::new(size, tag)
+            if let Some(alloc) = self.queue.pop() {
+                alloc.set_tag(tag);
+                Ok(alloc)
+            } else {
+                Allocator::new(size, tag)
+            }
         }
     }
 
@@ -217,8 +221,10 @@ impl AllocatorPool {
 
         #[cfg(not(feature = "crossbeam-channel"))]
         {
-            if alloc.can_put_back() {
-                alloc.release();
+            if !self.queue.is_full() && alloc.can_put_back() {
+                if let Err(alloc) = self.queue.push(alloc) {
+                    alloc.release();
+                }
             }
         }
     }
@@ -236,10 +242,17 @@ impl AllocatorPool {
     ///
     /// assert_eq!(pool.idle_allocators(), 1);
     /// ```
-    #[cfg(feature = "crossbeam-channel")]
     #[inline]
     pub fn idle_allocators(&self) -> usize {
-        self.inner.alloc_rx.len()
+        #[cfg(feature = "crossbeam-channel")]
+        {
+            self.inner.alloc_rx.len()
+        }
+
+        #[cfg(not(feature = "crossbeam-channel"))]
+        {
+            self.queue.len()
+        }
     }
 }
 
@@ -321,7 +334,6 @@ mod test {
         pool.put(a);
         pool.put(b);
         pool.put(c);
-        #[cfg(feature = "crossbeam-channel")]
         assert_eq!(2, pool.idle_allocators());
     }
 
