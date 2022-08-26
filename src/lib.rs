@@ -1,10 +1,7 @@
 //! Amortizes the cost of small allocations by allocating memory in bigger chunks.
 #![deny(missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(
-    feature = "nightly",
-    feature(const_mut_refs, const_slice_from_raw_parts_mut)
-)]
+#![cfg_attr(feature = "nightly", feature(const_mut_refs))]
 extern crate alloc;
 
 use alloc::{vec, vec::Vec};
@@ -707,7 +704,7 @@ impl Buffer {
     #[inline(always)]
     #[allow(clippy::mut_from_ref)]
     #[cfg(feature = "nightly")]
-    pub const fn as_mut_slice(&self) -> &mut [u8] {
+    pub fn as_mut_slice(&self) -> &mut [u8] {
         unsafe { from_raw_parts_mut(self.ptr.add(self.start), self.capacity()) }
     }
 

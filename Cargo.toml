@@ -1,6 +1,6 @@
 [package]
 name = "zallocator"
-version = "0.2.2"
+version = "0.2.3"
 authors = ["Al Liu <scygliu1@gmail.com>"]
 edition = "2021"
 license = "MIT/Apache-2.0"
