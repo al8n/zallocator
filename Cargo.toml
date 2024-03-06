@@ -1,6 +1,6 @@
 [package]
 name = "zallocator"
-version = "0.3.0"
+version = "0.5.1"
 authors = ["Al Liu <scygliu1@gmail.com>"]
 edition = "2021"
 license = "MIT/Apache-2.0"
@@ -9,9 +9,7 @@ documentation = "https://docs.rs/zallocator"
 description = "Amortizes the cost of small allocations by allocating memory in bigger chunks."
 keywords = ["allocator", "memory"]
 categories = ["data-structures", "no-std", "concurrency"]
-
-[workspace]
-members = [".", "integration"]
+rust-version = "1.70.0"
 
 [[bench]]
 name = "allocator"
@@ -20,44 +18,71 @@ harness = false
 
 [features]
 default = ["std"]
-full = ["std", "async-pool", "threadpool"]
-std = ["rand/std", "rand/std_rng", "lazy_static", "parking_lot", "hashbrown", "crossbeam-utils/default", "triomphe/default"]
+std = [
+  "rand/std",
+  "rand/std_rng",
+  "parking_lot",
+  "crossbeam-utils/default",
+  "crossbeam-queue/default",
+  "triomphe/default",
+]
 core = ["lazy_static/spin_no_std", "spin", "rand/alloc", "hashbrown"]
-js = ["getrandom/js"]
-inline-more = ["hashbrown/inline-more"]
-async-pool = ["pollster", "futures/default", "async-channel", "async-io"]
-threadpool = ["crossbeam-channel"]
-nightly = ["crossbeam-utils/nightly"]
+js = ["getrandom/js", "futures-timer/wasm-bindgen"]
+future = ["futures-timer"]
+
+tokio = ["dep:tokio", "future"]
+async-std = ["dep:async-std", "future"]
+smol = ["dep:smol", "future"]
 
 [dependencies]
-crossbeam-queue = { version = "0.3", default-features = false, features = ["alloc"] }
-crossbeam-channel = { version = "0.5", optional = true }
+crossbeam-queue = { version = "0.3", default-features = false, features = [
+  "alloc",
+] }
 crossbeam-utils = { version = "0.8", default-features = false }
-futures = { version = "0.3", optional = true }
-lazy_static = { version = "1.4", optional = true, default-features = false }
-hashbrown = { version = "0.12", optional = true }
-pollster = { version = "0.2", optional = true }
-parking_lot = { version = "0.12", optional = true }
-rand = { version = "0.8", optional = true, default-features = false }
-getrandom = { version = "0.2", optional = true }
-spin = { version = "0.9", optional = true }
+lazy_static = { version = "1.4", default-features = false }
+rand = { version = "0.8", default-features = false }
 triomphe = { version = "0.1", default-features = false }
-async-channel = { version = "1.7", optional = true }
-async-io = { version = "1.8", optional = true }
+
+futures-timer = { version = "3", optional = true }
+
+getrandom = { version = "0.2", optional = true }
+hashbrown = { version = "0.14", optional = true }
+
+parking_lot = { version = "0.12", optional = true }
+spin = { version = "0.9", optional = true }
+
+tokio = { version = "1", default-features = false, features = [
+  "rt",
+], optional = true }
+async-std = { version = "1", optional = true }
+smol = { version = "2", optional = true, default-features = false }
 
 [dev-dependencies]
-tokio = { version = "1.19", features = ["full"] }
-tokio-test = "0.4"
-futures = "0.3"
-criterion = "0.3"
+criterion = "0.5"
 rand = "0.8"
+tokio = { version = "1", features = ["full"] }
+tokio-test = "0.4"
+paste = "1"
+smol = "2"
+async-std = "1"
 
 [target.'cfg(loom)'.dev-dependencies]
-loom = "0.5"
+loom = "0.7"
 
 [target.'cfg(wasm)'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }
 
+[[example]]
+name = "async-pool"
+path = "examples/async_pool.rs"
+required-features = ["tokio"]
+
+[[example]]
+name = "pool"
+path = "examples/pool.rs"
+required-features = ["std"]
+
 [package.metadata.docs.rs]
-all-features = true
+no-default-features = false
+features = ["future", "tokio", "async-std", "smol", "std"]
 rustdoc-args = ["--cfg", "docsrs"]

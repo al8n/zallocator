@@ -1,4 +1,5 @@
 use alloc::format;
+#[cfg(not(feature = "std"))]
 use alloc::string::String;
 
 const UNITS: &[&str] = &["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB"];

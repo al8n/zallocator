@@ -25,7 +25,7 @@ on:
 env:
   RUSTFLAGS: -Dwarnings
   RUST_BACKTRACE: 1
-  nightly: nightly-2022-06-27
+  nightly: nightly
 
 defaults:
   run:
@@ -50,22 +50,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Apply clippy lints
-      run: cargo clippy --all-features
-
-  # This represents the minimum Rust version supported by
-  # Bytes. Updating this should be done in a dedicated PR.
-  #
-  # Tests are not run as tests may require newer versions of
-  # rust.
-  minrust:
-    name: minrust
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Install Rust
-        run: rustup update 1.61.0 && rustup default 1.61.0
-      - name: Check
-        run: . ci/test-stable.sh check
+      run: cargo clippy
 
   # Stable
   stable:
@@ -82,19 +67,10 @@ jobs:
       - name: Install Rust
         # --no-self-update is necessary because the windows environment cannot self-update rustup.exe.
         run: rustup update stable --no-self-update && rustup default stable
-      - name: Test
-        run: . ci/test-stable.sh test
-
-  # Nightly
-  nightly:
-    name: nightly
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Install Rust
-        run: rustup update $nightly && rustup default $nightly
-      - name: Test
-        run: . ci/test-stable.sh test
+      - name: Test with std
+        run: cargo test --features future,tokio,async-std,smol
+      - name: Test without std
+        run: cargo test --no-default-features --features core
 
   # Run tests on some extra platforms
   cross:
@@ -110,7 +86,6 @@ jobs:
           - wasm32-unknown-unknown
           - i686-unknown-linux-gnu
           - powerpc64-unknown-linux-gnu
-          - mips64-unknown-linux-gnuabi64
           - riscv64gc-unknown-linux-gnu
     runs-on: ubuntu-latest
     steps:
@@ -173,16 +148,15 @@ jobs:
 
       # Run with valgrind
       - name: Run valgrind test-concurrent-allocator
-        run: valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=all ./target/debug/integration 
+        run: valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=all ./target/debug/integration
+        working-directory: integration
 
-  tarpaulin:
+  coverage:
     name: cargo tarpaulin
     needs: 
       - rustfmt
       - clippy
       - stable
-      - nightly
-      - minrust
       - cross
       - sanitizer 
     runs-on: ubuntu-latest
@@ -204,40 +178,13 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - uses: actions-rs/tarpaulin@v0.1
+      - name: Install cargo-tarpaulin
+        run: cargo install cargo-tarpaulin
+
       - name: Run cargo tarpaulin
-        run: cargo tarpaulin --all-features --run-types Tests,Doctests --out Xml
+        run: cargo tarpaulin --features tokio,async-std,smol --run-types AllTargets --out xml
 
       - name: Upload to codecov.io
         uses: codecov/codecov-action@v1.0.2
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: file
-
-  publish_docs:
-    name: Publish Documentation
-    needs:
-      - rustfmt
-      - clippy
-      - stable
-      - nightly
-      - minrust
-      - cross
-      - sanitizer 
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Install Rust
-        run: rustup update stable && rustup default stable
-      - name: Build documentation
-        run: cargo doc --no-deps --all-features
-        env:
-          RUSTDOCFLAGS: --cfg docsrs
-      - name: Publish documentation
-        run: |
-          cd target/doc
-          git init
-          git add .
-          git -c user.name='ci' -c user.email='ci' commit -m 'Deploy zallocator API documentation'
-          git push -f -q https://git:${{ secrets.github_token }}@github.com/${{ github.repository }} HEAD:gh-pages
-        if: github.event_name == 'push' && github.event.ref == 'refs/heads/master' && github.repository == 'al8n/zallocator'

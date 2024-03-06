@@ -9,8 +9,8 @@ edition = "2021"
 
 [dependencies]
 tokio = { version = "1.19", features = ["rt", "rt-multi-thread", "macros"] }
-futures = "0.3"
+futures = "=0.3.29"
 rand = "0.8"
-hashbrown = "0.12"
+hashbrown = "0.14"
 zallocator = { path = "../", default-features = false, features = ["core"] }
 spin = "0.9"

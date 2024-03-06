@@ -1,15 +1,32 @@
 //! Amortizes the cost of small allocations by allocating memory in bigger chunks.
 #![deny(missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(feature = "nightly", feature(const_mut_refs))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
+#![cfg_attr(docsrs, allow(unused_attributes))]
+
+#[cfg(all(feature = "std", feature = "core"))]
+compile_error!(
+    "`zallocator` does not allow enabling both `std` and `core` features at the same time."
+);
+
+#[cfg(not(any(feature = "std", feature = "core")))]
+compile_error!("`zallocator` requires either `std` or `core` feature to be enabled.");
+
 extern crate alloc;
 
-use alloc::{vec, vec::Vec};
+use alloc::vec;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 use core::{
     mem::ManuallyDrop,
     slice::{from_raw_parts, from_raw_parts_mut},
 };
-use hashbrown::HashMap;
+#[cfg(feature = "core")]
+use hashbrown::{hash_map::Entry, HashMap};
+#[cfg(feature = "std")]
+use std::collections::{hash_map::Entry, HashMap};
+
 use sealed::{
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -31,7 +48,7 @@ pub mod pool;
 mod mutex {
     #[cfg(feature = "parking_lot")]
     pub(crate) use parking_lot::Mutex;
-    #[cfg(not(feature = "parking_lot"))]
+    #[cfg(feature = "core")]
     pub(crate) use spin::Mutex;
 }
 #[cfg(all(test, loom))]
@@ -52,17 +69,21 @@ mod mutex {
 use mutex::Mutex;
 
 mod sealed {
-    use super::Zallocator;
+    use super::{HashMap, Zallocator};
 
     #[cfg(not(all(test, loom)))]
     pub(crate) mod sync {
         pub(crate) use core::sync::*;
         pub(crate) use triomphe::Arc;
+
+        #[cfg(feature = "std")]
+        pub(crate) use std::thread::spawn;
     }
 
     #[cfg(all(test, loom))]
     pub(crate) mod sync {
         pub(crate) use loom::sync::*;
+        pub(crate) use loom::thread::spawn;
     }
 
     use sync::atomic::AtomicU64;
@@ -71,8 +92,8 @@ mod sealed {
     loom::lazy_static! {
         pub(crate) static ref ALLOC_REF: AtomicU64 = AtomicU64::new(0);
 
-        pub(crate) static ref ZALLOCATORS: crate::mutex::Mutex<hashbrown::HashMap<u64, Zallocator>> =
-            crate::mutex::Mutex::new(hashbrown::HashMap::new());
+        pub(crate) static ref ZALLOCATORS: crate::mutex::Mutex<HashMap<u64, Zallocator>> =
+            crate::mutex::Mutex::new(HashMap::new());
     }
 
     #[cfg(not(all(test, loom)))]
@@ -89,7 +110,7 @@ mod sealed {
                 rand::Rng::gen_range(&mut rng, 0..1 << 16)
             };
 
-            #[cfg(not(feature = "std"))]
+            #[cfg(feature = "core")]
             let r: u64 = {
                 use rand::{rngs::OsRng, RngCore};
                 let mut key = [0u8; 8];
@@ -99,8 +120,9 @@ mod sealed {
             };
             AtomicU64::new(r << 48)
         };
-        pub(crate) static ref ZALLOCATORS: crate::mutex::Mutex<hashbrown::HashMap<u64, Zallocator>> =
-            crate::mutex::Mutex::new(hashbrown::HashMap::new());
+
+        pub(crate) static ref ZALLOCATORS: crate::mutex::Mutex<HashMap<u64, Zallocator>> =
+        crate::mutex::Mutex::new(HashMap::new());
     }
 
     pub(crate) static mut ZERO_SIZE_BUFFER_PTR: [u8; 0] = [];
@@ -153,7 +175,7 @@ impl core::fmt::Display for ZallocatorStats {
 #[inline]
 pub fn allocate_from(reference: u64) -> Option<Zallocator> {
     let a = ZALLOCATORS.lock();
-    a.get(&reference).map(core::clone::Clone::clone)
+    a.get(&reference).cloned()
 }
 
 /// Release an allocator by reference
@@ -231,7 +253,6 @@ impl ZallocatorBuffers {
         let cap = 1u64 << cap;
         Self {
             buffers: (0..64usize)
-                .into_iter()
                 .map(|idx| {
                     if idx == 0 {
                         ZallocatorBuffer::new(vec![0; cap as usize])
@@ -316,8 +337,8 @@ impl Zallocator {
         let mut allocators = ZALLOCATORS.lock();
 
         match allocators.entry(reference) {
-            hashbrown::hash_map::Entry::Occupied(v) => Ok(v.get().clone()),
-            hashbrown::hash_map::Entry::Vacant(v) => {
+            Entry::Occupied(v) => Ok(v.get().clone()),
+            Entry::Vacant(v) => {
                 v.insert(this.clone());
                 Ok(this)
             }
@@ -682,7 +703,7 @@ impl Buffer {
     /// # Panics
     /// Panics if the length of src is greater than the capacity of buffer.
     #[inline(always)]
-    pub const fn copy_from_slice(&self, src: &[u8]) {
+    pub fn copy_from_slice(&self, src: &[u8]) {
         if self.capacity() < src.len() {
             panic!("Buffer capacity is not enough");
         }
@@ -695,15 +716,6 @@ impl Buffer {
     /// Returns the undelying mutable slice of the buffer
     #[inline(always)]
     #[allow(clippy::mut_from_ref)]
-    #[cfg(not(feature = "nightly"))]
-    pub fn as_mut_slice(&self) -> &mut [u8] {
-        unsafe { from_raw_parts_mut(self.ptr.add(self.start), self.capacity()) }
-    }
-
-    /// Returns the undelying mutable slice of the buffer
-    #[inline(always)]
-    #[allow(clippy::mut_from_ref)]
-    #[cfg(feature = "nightly")]
     pub fn as_mut_slice(&self) -> &mut [u8] {
         unsafe { from_raw_parts_mut(self.ptr.add(self.start), self.capacity()) }
     }
@@ -770,9 +782,11 @@ impl Buffer {
             end,
             len,
         );
-
         assert!(
-            (self.start + start).checked_add(end).expect("out of range") <= self.end,
+            (self.start + start)
+                .checked_add(end - start)
+                .expect("out of range")
+                <= self.end,
             "out of range"
         );
         (start, end)
@@ -922,7 +936,19 @@ mod tests {
         check(&a);
         assert_eq!(prev, a.allocated());
         assert!(prev >= 1 + (1 << (20 + 1)) + (256 << 20));
-        a.release();
+
+        #[cfg(feature = "std")]
+        {
+            std::println!("{}", a);
+            a.release();
+            let stats = stats();
+            std::println!("{}", stats);
+        }
+
+        #[cfg(not(feature = "std"))]
+        {
+            a.release();
+        }
     }
 
     #[test]
@@ -956,13 +982,13 @@ mod tests {
         let mut rng = rand::thread_rng();
         rng.fill(&mut buf[..]);
         (0..1000).for_each(|_| {
-            a.copy_from(&buf).unwrap();
+            a.copy_from(buf).unwrap();
         });
 
         let prev = a.allocated();
         a.reset();
         (0..100).for_each(|_| {
-            a.copy_from(&buf).unwrap();
+            a.copy_from(buf).unwrap();
         });
 
         assert_eq!(prev, a.allocated());
@@ -977,7 +1003,7 @@ mod tests {
         let mut rng = rand::thread_rng();
         rng.fill(&mut buf[..]);
         (0..1000).for_each(|_| {
-            a.copy_from(&buf).unwrap();
+            a.copy_from(buf).unwrap();
         });
 
         const N: u64 = 2048;
@@ -990,12 +1016,14 @@ mod tests {
     #[cfg(not(loom))]
     #[cfg_attr(miri, ignore)]
     fn test_concurrent() {
+        use std::collections::HashSet;
+
         let a = Zallocator::new(63, "test concurrent").unwrap();
         const N: u64 = 10240;
         const M: u64 = 16;
         let wg = Arc::new(AtomicU64::new(0));
 
-        let m = Arc::new(Mutex::new(hashbrown::HashSet::<usize>::new()));
+        let m = Arc::new(Mutex::new(HashSet::<usize>::new()));
         let _ = (0..M)
             .map(|_| {
                 let wg = wg.clone();
